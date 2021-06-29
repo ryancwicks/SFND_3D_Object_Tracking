@@ -139,9 +139,6 @@ int main(int argc, const char *argv[])
         cout << "#4 : CLUSTER LIDAR POINT CLOUD done" << endl;
         
         
-        // REMOVE THIS LINE BEFORE PROCEEDING WITH THE FINAL PROJECT
-        continue; // skips directly to the next image without processing what comes beneath
-
         /* DETECT IMAGE KEYPOINTS */
 
         // convert current image to grayscale
@@ -150,15 +147,16 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "SHITOMASI";
+        string detectorType = "SHITOMASI"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
 
-        if (detectorType.compare("SHITOMASI") == 0)
-        {
-            detKeypointsShiTomasi(keypoints, imgGray, false);
-        }
-        else
-        {
-            //...
+        Detector detector (detectorType);
+        detector.visualizeDetector(false);
+        try {
+            (dataBuffer.end()-1)->keypoint_run_time = detector.detect(keypoints, (dataBuffer.end() - 1)->cameraImg);
+        } catch(...) {
+            std::cerr <<"Keypoint detection with " << detectorType << " failed." << std::endl;
+            (dataBuffer.end()-1)->keypoint_run_time = -1.0;
+            continue;
         }
 
         // optional : limit number of keypoints (helpful for debugging and learning)
@@ -180,12 +178,19 @@ int main(int argc, const char *argv[])
 
         cout << "#5 : DETECT KEYPOINTS done" << endl;
 
-
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
         string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
-        descKeypoints((dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->cameraImg, descriptors, descriptorType);
+        
+        Descriptor descriptor (descriptorType);
+        try{
+            (dataBuffer.end()-1)->descriptor_run_time = descriptor.describe((dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->cameraImg, descriptors);
+        } catch (...) {
+            std::cerr << "Descriptor step failed for the combination of " << detectorType << " keypoints and " << descriptorType << " descriptors." << std::endl;
+            (dataBuffer.end()-1)->descriptor_run_time = -1.0;
+            continue;
+        }
 
         // push descriptors for current frame to end of data buffer
         (dataBuffer.end() - 1)->descriptors = descriptors;
@@ -203,10 +208,25 @@ int main(int argc, const char *argv[])
             string descriptorType = "DES_BINARY"; // DES_BINARY, DES_HOG
             string selectorType = "SEL_NN";       // SEL_NN, SEL_KNN
 
-            matchDescriptors((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints,
-                             (dataBuffer.end() - 2)->descriptors, (dataBuffer.end() - 1)->descriptors,
-                             matches, descriptorType, matcherType, selectorType);
+            Matcher matcher (matcherType, selectorType, descriptor.featureType());
+            if ( (dataBuffer.end() - 1)->keypoints.size() == 0 ||
+                (dataBuffer.end() - 2)->keypoints.size() == 0) {
+                std::cerr << "Not enough keypoints detected, skipping." <<std::endl;
+                continue;
+            }
+            if ( (dataBuffer.end() - 1)->descriptors.cols != (dataBuffer.end() - 2)->descriptors.cols ) {
+                std::cerr << "Mismatch between descriptor sizes, skipping." << std::endl;
+                continue;
+            }
 
+            try {
+                matcher.matchDescriptors((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints,
+                                 (dataBuffer.end() - 2)->descriptors, (dataBuffer.end() - 1)->descriptors,
+                                 matches);
+            } catch (...) {
+                std::cerr << matcherType << " matching failed with " << selectorType << " selection, " << detectorType << " keypoints and " << descriptorType << " descriptors." << std::endl;
+                continue;
+            }
             // store matches in current data frame
             (dataBuffer.end() - 1)->kptMatches = matches;
 
