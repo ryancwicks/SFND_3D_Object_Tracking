@@ -159,5 +159,5 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    // 
+    std::vector<cv::DMatch> &matches = currFrame.kptMatches; //removed from the function signature, since it was redundant.
 }

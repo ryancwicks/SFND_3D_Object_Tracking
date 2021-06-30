@@ -13,9 +13,14 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 
 
 /**
- * 
+ * This method matches the bounding box between two images/dataframes. The keypoint matches that are substantially common 
+ *      between two data frames are assumed contained by the same bounding box. The currFrame must have populated the kptMatches
+ *      field with matches from the previous frame for this function to work.
+ * @param bbBestMatches [out] This map contains a map of the best match bounding boxes betweeen the two frames, by their Dataframe bounding box vector index.
+ * @param prevFrame [in] previous dataframe
+ * @param currFrame [in] current dataframe 
  */
-void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame);
+void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame);
 
 void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, cv::Size imageSize, bool bWait=true);
 
