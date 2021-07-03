@@ -157,7 +157,42 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 }
 
 
-void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
+void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    std::vector<cv::DMatch> &matches = currFrame.kptMatches; //removed from the function signature, since it was redundant.
+    const std::vector<cv::DMatch> &matches = currFrame.kptMatches; //removed from the function signature, since it was redundant.
+    bbBestMatches.clear();
+    const int min_match_threshold(2);
+
+    // This vector of vector counts how many keypoints appear in the current frame bounding box and the previous frame bounding box
+    // Each keypoint that appears in a current bounding box and also appears in a previous bounding box increments the appropriate value in the 
+    // vector by 1. After processing the keypoints and boxes, the pairs of current and previous boxes with the highest association score are paired
+    // (if the number of matches is greater than min_match_threshold)
+    std::vector<std::vector<int>> box_match_count (currFrame.boundingBoxes.size(), std::vector<int>(prevFrame.boundingBoxes.size(), 0));
+    
+    for ( const auto & match : matches ) {
+        for (auto curr_box = 0; curr_box < currFrame.boundingBoxes.size(); ++curr_box) {
+
+            //query index is the first frame to be called, train is the second. With the convention we are using, curr is the train index, 
+            // prev is the query index
+            if (currFrame.boundingBoxes[curr_box].roi.contains (currFrame.keypoints[match.trainIdx].pt)) {
+                for (auto prev_box = 0; prev_box < prevFrame.boundingBoxes.size(); ++prev_box) {
+                    if (prevFrame.boundingBoxes[prev_box].roi.contains (prevFrame.keypoints[match.queryIdx].pt)) {
+                        box_match_count[curr_box][prev_box] += 1;
+                        continue;
+                    }
+                }
+                continue; // These continues ensure that we only match 1 keypoint match to 1 box.
+            }
+        }
+    }
+
+    for (auto i = 0; i < box_match_count.size(); ++i) {
+        for (auto j = 0; j < box_match_count[i].size(); ++j) {
+            if (box_match_count[i][j] > min_match_threshold) {
+                auto idx_curr = currFrame.boundingBoxes[i].boxID;
+                auto idx_prev = prevFrame.boundingBoxes[j].boxID;
+                bbBestMatches[idx_curr] = idx_prev;
+            }
+        }
+    }
 }
