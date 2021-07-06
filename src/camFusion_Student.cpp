@@ -153,7 +153,58 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
-    // ...
+
+    /**
+     * lambda function to compute the nearest point in z in the vector of lidar points.
+     * @param points [in] lidar point to analyze (units of m). Will be sorted in place.
+     * @param sigma_to_keep number of standard deviations around the median to keep (in z)
+     * @param percent_to_average percentage of the outlier filtered point to average to get the range to the target (in z).
+     * @param range to the target in m.
+     */
+    auto compute_nearest = [](std::vector<LidarPoint> & points, double sigma_to_keep = 3.0, double percent_to_average = 5.0)->double {
+        std::sort(points.begin(), points.end(), [](const LidarPoint & a, const LidarPoint & b) -> bool {
+            return a.x < b.x;
+        });
+
+        double mean = 0.0;
+        for (const auto & point: points) {
+            mean += point.x;
+        }
+        mean /= points.size();
+        double stddev = 0.0;
+        for (const auto & point: points) {
+            stddev += std::pow(point.x - mean, 2);
+        }
+        stddev = std::sqrt(stddev/(points.size()-1));
+        double bottom_threshold = mean - sigma_to_keep * stddev;
+        size_t bottom_threshold_idx = 0;
+
+        for (bottom_threshold_idx = 0; bottom_threshold_idx < points.size(); ++bottom_threshold_idx) {
+            if (points[bottom_threshold_idx].x > bottom_threshold) {
+                break;
+            }
+        }
+
+        size_t remaining_points = points.size() - bottom_threshold_idx;
+        size_t points_to_average = remaining_points * percent_to_average / 100;
+        if (points_to_average == 0) {
+            points_to_average = 1;
+        }
+
+        double range = 0.0;
+        for (size_t i = bottom_threshold_idx; i < bottom_threshold_idx + points_to_average; ++i) {
+            range += points[i].x;
+        }
+
+        return range / points_to_average;
+    };
+
+    double curr_range = compute_nearest(lidarPointsCurr);
+    double prev_range = compute_nearest(lidarPointsPrev);
+
+    double dt = 1.0/frameRate;
+
+    TTC = curr_range * dt / (prev_range - curr_range);
 }
 
 

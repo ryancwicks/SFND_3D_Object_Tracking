@@ -26,6 +26,14 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr,
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg=nullptr);
+
+/**
+ * This method returns the time to collision based on lidar between two sets of lidar points that have already been associated by bounding boxes. 
+ * @param lidarPointsPrev [in] a vector of lidar points from the previous image. Will be sorted in place by z.
+ * @param lidarPointsCurr [in] a vector of lidar points from the current image. Will be sorted in place by z.
+ * @param framerate [in] the camera capture rate in Hz.
+ * @param TTC [out] Time to Collision in seconds.
+ */
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC);                  
 #endif /* camFusion_hpp */
