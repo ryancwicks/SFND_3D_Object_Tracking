@@ -136,29 +136,123 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
 
 // associate a given bounding box with the keypoints it contains
-void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
-{
-    // ...
+void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches) {
+    
+    boundingBox.kptMatches.clear();
+    //Fill the kptMatches with matches within the bounding box
+    for ( const auto & match : kptMatches ) {
+        if (boundingBox.roi.contains(kptsCurr[match.trainIdx].pt)) {
+            boundingBox.kptMatches.push_back(match);
+        }
+    }
+    
+    if (boundingBox.kptMatches.empty()) {
+        return;
+    }
+    if (boundingBox.kptMatches.size() == 1) {
+        boundingBox.keypoints.push_back(kptsCurr[boundingBox.kptMatches[0].trainIdx]);
+        return;
+    }
+
+    //calculate mean and standard deviation of match distances
+    double mean = 0.0;
+    for (const auto & match : boundingBox.kptMatches) {
+        mean += match.distance; 
+    }
+    mean /= boundingBox.kptMatches.size();
+
+    double stddev = 0.0;
+    for (const auto & match : boundingBox.kptMatches) {
+        stddev += std::pow(match.distance - mean, 2.0);
+    }
+    stddev = std::sqrt(stddev/(boundingBox.kptMatches.size()-1));
+
+    //remove keypoints with distances > 3 * standard deviation
+    boundingBox.kptMatches.erase( std::remove_if( boundingBox.kptMatches.begin(),
+                                                  boundingBox.kptMatches.end(),
+                                                  [&]( const cv::DMatch & match ) -> bool {
+                                                      return std::abs(match.distance - mean) > 3.0*stddev;
+                                                  } ),
+                                   boundingBox.kptMatches.end() );
+    
+    boundingBox.keypoints.clear();
+    boundingBox.keypoints.reserve(boundingBox.kptMatches.size());
+    for (const auto & match : boundingBox.kptMatches) {
+        boundingBox.keypoints.push_back(kptsCurr[match.trainIdx]);
+    }
 }
 
 
 // Compute time-to-collision (TTC) based on keypoint correspondences in successive images
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
-                      std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
-{
-    // ...
+                      std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg) {
+    
+    //loop over every combination of keypoints and compute the TTC and accumulate them
+    double mean = 0;
+    std::vector <double> ttc_vec;
+    for (size_t i = 0; i < kptMatches.size()-1; ++i) {
+        for (size_t j = i+1; j < kptMatches.size(); ++j) {
+            auto & pt1_curr = kptsCurr[kptMatches[i].trainIdx].pt;
+            auto & pt2_curr = kptsCurr[kptMatches[j].trainIdx].pt;
+            auto & pt1_prev = kptsPrev[kptMatches[i].queryIdx].pt;
+            auto & pt2_prev = kptsPrev[kptMatches[j].queryIdx].pt;
+
+            double h_curr = std::sqrt((pt2_curr - pt1_curr).dot(pt2_curr - pt1_curr));
+            double h_prev = std::sqrt((pt2_prev - pt1_prev).dot(pt2_prev - pt1_prev));
+            // reject small/noisy keypoints distances (5 pixel apart or less) or keypoints that don't change/cause division errors.
+            if (h_curr < 5.0 || h_prev < 5.0 || std::abs (h_curr - h_prev) < 0.000001) {
+                continue;
+            } else {
+                double curr_ttc (- 1.0 / frameRate / (1.0 - h_curr/h_prev));
+                mean += curr_ttc;
+                ttc_vec.push_back(curr_ttc);
+            }
+        }
+    }
+
+    if (ttc_vec.size() == 0) {
+        return;
+    }
+    //This filtering method just uses the median of the measurements.
+    /*std::sort(ttc_vec.begin(), ttc_vec.end());
+    size_t mid = ttc_vec.size()/2;
+
+    TTC = ttc_vec[mid];
+    */
+
+    //This method uses the mean with 3 sigma rejection
+    if (ttc_vec.size() == 1) {
+        TTC = ttc_vec[0];
+        return;
+    }
+    mean /= ttc_vec.size();
+
+    double stddev = 0.0;
+    for (double ttc : ttc_vec) {
+        stddev += std::pow(ttc - mean, 2.0);
+    }
+    stddev = std::sqrt(stddev/(ttc_vec.size()-1));
+
+    //remove ttc's with distances > 3 * standard deviation
+    ttc_vec.erase( std::remove_if( ttc_vec.begin(),
+                                   ttc_vec.end(),
+                                        [&]( double curr_ttc ) -> bool {
+                                          return std::abs(curr_ttc - mean) > 3.0*stddev;
+                                        } ),
+                   ttc_vec.end() );
+
+    TTC = std::accumulate(ttc_vec.begin(), ttc_vec.end(), 0.0);
+    TTC /= ttc_vec.size();
 }
 
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
-                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
-{
-
+                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC, double offset_lidar_camera) {
     /**
-     * lambda function to compute the nearest point in z in the vector of lidar points.
+     * Function to compute the nearest point in x in the vector of lidar points. This point is in the Lidar co-ordinate space.
      * @param points [in] lidar point to analyze (units of m). Will be sorted in place.
-     * @param sigma_to_keep number of standard deviations around the median to keep (in z)
-     * @param percent_to_average percentage of the outlier filtered point to average to get the range to the target (in z).
+     * @param sigma_to_keep number of standard deviations around the median to keep (in x)
+     * @param percent_to_average percentage of the outlier filtered point to average to get the range to the target (in x).
      * @param range to the target in m.
      */
     auto compute_nearest = [](std::vector<LidarPoint> & points, double sigma_to_keep = 3.0, double percent_to_average = 5.0)->double {
@@ -199,8 +293,8 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
         return range / points_to_average;
     };
 
-    double curr_range = compute_nearest(lidarPointsCurr);
-    double prev_range = compute_nearest(lidarPointsPrev);
+    double curr_range = compute_nearest(lidarPointsCurr) - offset_lidar_camera;
+    double prev_range = compute_nearest(lidarPointsPrev) - offset_lidar_camera;
 
     double dt = 1.0/frameRate;
 
@@ -208,11 +302,10 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 }
 
 
-void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
-{
+void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame) {
     const std::vector<cv::DMatch> &matches = currFrame.kptMatches; //removed from the function signature, since it was redundant.
     bbBestMatches.clear();
-    const int min_match_threshold(2);
+    const int min_match_threshold(10);
 
     // This vector of vector counts how many keypoints appear in the current frame bounding box and the previous frame bounding box
     // Each keypoint that appears in a current bounding box and also appears in a previous bounding box increments the appropriate value in the 
@@ -229,21 +322,63 @@ void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame,
                 for (auto prev_box = 0; prev_box < prevFrame.boundingBoxes.size(); ++prev_box) {
                     if (prevFrame.boundingBoxes[prev_box].roi.contains (prevFrame.keypoints[match.queryIdx].pt)) {
                         box_match_count[curr_box][prev_box] += 1;
-                        continue;
                     }
                 }
-                continue; // These continues ensure that we only match 1 keypoint match to 1 box.
             }
         }
     }
 
     for (auto i = 0; i < box_match_count.size(); ++i) {
+        std::vector<size_t> possible_matches;
+        possible_matches.reserve(box_match_count[i].size());
         for (auto j = 0; j < box_match_count[i].size(); ++j) {
             if (box_match_count[i][j] > min_match_threshold) {
-                auto idx_curr = currFrame.boundingBoxes[i].boxID;
-                auto idx_prev = prevFrame.boundingBoxes[j].boxID;
-                bbBestMatches[idx_curr] = idx_prev;
+                possible_matches.push_back(j);
+            }    
+        }
+        
+        if (possible_matches.empty()) {
+            continue;
+        }
+        
+        //Look at all the regions where there are more than min_match_threshold keypoints and choose the region with the largest overlap.
+        //I do this because simply looking for max keypoints was giving me the wrong answer occasionally (for another reason, it turns out).
+        //I'll leave this in for now, as it should prefer associations of similiar size and position and act as another filter for tracking.
+        //This filter is based on the assumption that any target of interest in our scene will change slowly as it moves through the scene (relative
+        //to the camera framerate), which is reasonable for traffic.
+        size_t max_j = 0;
+        double  max_overlap (0.0);
+        for ( auto idx : possible_matches ) {
+            cv::Rect & curr_roi = currFrame.boundingBoxes[i].roi;
+            cv::Rect & prev_roi = prevFrame.boundingBoxes[idx].roi;
+
+            // Calculate the overlap region of the rectangles
+            // from https://stackoverflow.com/questions/9324339/how-much-do-two-rectangles-overlap/9325084
+            double x1_tl = curr_roi.tl().x;
+            double y1_tl = curr_roi.tl().y;
+            double x1_br = curr_roi.br().x;
+            double y1_br = curr_roi.br().y;
+            
+            double x2_tl = prev_roi.tl().x;
+            double y2_tl = prev_roi.tl().y;
+            double x2_br = prev_roi.br().x;
+            double y2_br = prev_roi.br().y;
+
+            double overlap_x = std::max(0.0, std::min(x2_br, x1_br) - std::max(x2_tl, x1_tl));
+            double overlap_y = std::max(0.0, std::min(y2_br, y1_br) - std::max(y2_tl, y1_tl));
+
+            double intersection_overlap (overlap_x * overlap_y);
+            double union_area (curr_roi.area() + prev_roi.area() - intersection_overlap);
+            double overlap_ratio ( intersection_overlap/union_area);
+            if (overlap_ratio > max_overlap) {
+                max_overlap = overlap_ratio;
+                max_j = idx;
             }
         }
+
+        auto idx_curr = currFrame.boundingBoxes[i].boxID;
+        auto idx_prev = prevFrame.boundingBoxes[max_j].boxID;
+
+        bbBestMatches[idx_curr] = idx_prev;    
     }
 }
