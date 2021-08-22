@@ -271,6 +271,7 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
         }
         stddev = std::sqrt(stddev/(points.size()-1));
         double bottom_threshold = mean - sigma_to_keep * stddev;
+
         size_t bottom_threshold_idx = 0;
 
         for (bottom_threshold_idx = 0; bottom_threshold_idx < points.size(); ++bottom_threshold_idx) {
@@ -279,18 +280,7 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
             }
         }
 
-        size_t remaining_points = points.size() - bottom_threshold_idx;
-        size_t points_to_average = remaining_points * percent_to_average / 100;
-        if (points_to_average == 0) {
-            points_to_average = 1;
-        }
-
-        double range = 0.0;
-        for (size_t i = bottom_threshold_idx; i < bottom_threshold_idx + points_to_average; ++i) {
-            range += points[i].x;
-        }
-
-        return range / points_to_average;
+        return points[bottom_threshold_idx].x;
     };
 
     double curr_range = compute_nearest(lidarPointsCurr) - offset_lidar_camera;
