@@ -200,13 +200,14 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
             double h_curr = std::sqrt((pt2_curr - pt1_curr).dot(pt2_curr - pt1_curr));
             double h_prev = std::sqrt((pt2_prev - pt1_prev).dot(pt2_prev - pt1_prev));
             // reject small/noisy keypoints distances (5 pixel apart or less) or keypoints that don't change/cause division errors.
-            if (h_curr < 5.0 || h_prev < 5.0 || std::abs (h_curr - h_prev) < 0.000001) {
+            if (h_curr < 5.0 || h_prev < 5.0 || std::abs (h_curr - h_prev) < 0.001) {
                 continue;
             } else {
                 double curr_ttc (- 1.0 / frameRate / (1.0 - h_curr/h_prev));
                 mean += curr_ttc;
                 ttc_vec.push_back(curr_ttc);
             }
+            
         }
     }
 
@@ -214,12 +215,11 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
         return;
     }
     //This filtering method just uses the median of the measurements.
-    /*std::sort(ttc_vec.begin(), ttc_vec.end());
+    std::sort(ttc_vec.begin(), ttc_vec.end());
     size_t mid = ttc_vec.size()/2;
 
-    TTC = ttc_vec[mid];
-    */
-
+    double median = ttc_vec[mid];
+    
     //This method uses the mean with 3 sigma rejection
     if (ttc_vec.size() == 1) {
         TTC = ttc_vec[0];
@@ -233,23 +233,26 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
     }
     stddev = std::sqrt(stddev/(ttc_vec.size()-1));
 
-    //remove ttc's with distances > 3 * standard deviation
+    //remove ttc's with distances > standard deviation from the median
+    //Due to a large number of outliers from points past the edge of the car, the median seemed 
+    //a better statistic to use than the mean.
     ttc_vec.erase( std::remove_if( ttc_vec.begin(),
                                    ttc_vec.end(),
                                         [&]( double curr_ttc ) -> bool {
-                                          return std::abs(curr_ttc - mean) > 3.0*stddev;
+                                          return std::abs(curr_ttc - median) > stddev;
                                         } ),
                    ttc_vec.end() );
 
     TTC = std::accumulate(ttc_vec.begin(), ttc_vec.end(), 0.0);
     TTC /= ttc_vec.size();
+
 }
 
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC, double offset_lidar_camera) {
     /**
-     * Function to compute the nearest point in x in the vector of lidar points. This point is in the Lidar co-ordinate space.
+     * Function to compute the nearest point in x in the vector of lidar points. This point is in the Lidar co-ordinate space. The closest 10% of points are averages to improve the noise.
      * @param points [in] lidar point to analyze (units of m). Will be sorted in place.
      * @param sigma_to_keep number of standard deviations around the median to keep (in x)
      * @param percent_to_average percentage of the outlier filtered point to average to get the range to the target (in x).
@@ -259,6 +262,16 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
         std::sort(points.begin(), points.end(), [](const LidarPoint & a, const LidarPoint & b) -> bool {
             return a.x < b.x;
         });
+
+        int med_idx = int(points.size()/2);
+        double median = points[med_idx].x;
+
+        points.erase( std::remove_if( points.begin(),
+                                      points.end(),
+                                        [&]( LidarPoint curr_point ) -> bool {
+                                          return std::abs(curr_point.x - median) > 0.25;
+                                        } ),
+                                      points.end() );
 
         double mean = 0.0;
         for (const auto & point: points) {
@@ -280,7 +293,13 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
             }
         }
 
-        return points[bottom_threshold_idx].x;
+        mean = 0.0;
+        int num_points = int((points.size() - bottom_threshold_idx)*0.1);
+        for (auto i = bottom_threshold_idx; i < bottom_threshold_idx + num_points; ++i) {
+            mean += points[i].x;
+        }
+
+        return mean / num_points;
     };
 
     double curr_range = compute_nearest(lidarPointsCurr) - offset_lidar_camera;
@@ -319,6 +338,7 @@ void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame,
     }
 
     for (auto i = 0; i < box_match_count.size(); ++i) {
+        /*
         std::vector<size_t> possible_matches;
         possible_matches.reserve(box_match_count[i].size());
         for (auto j = 0; j < box_match_count[i].size(); ++j) {
@@ -366,6 +386,17 @@ void matchBoundingBoxes(std::map<int, int> &bbBestMatches, DataFrame &prevFrame,
             }
         }
 
+        */
+
+        int max_j = 0;
+        int max_j_count = 0;
+        for (auto j = 0; j < box_match_count[i].size(); ++j) {
+            if (box_match_count[i][j] > max_j_count) {
+                max_j = j;
+                max_j_count = box_match_count[i][j];
+            }    
+        }
+        
         auto idx_curr = currFrame.boundingBoxes[i].boxID;
         auto idx_prev = prevFrame.boundingBoxes[max_j].boxID;
 

@@ -35,7 +35,7 @@ int main(int argc, const char *argv[])
     string imgPrefix = "KITTI/2011_09_26/image_02/data/000000"; // left camera, color
     string imgFileType = ".png";
     int imgStartIndex = 0; // first file index to load (assumes Lidar and camera names have identical naming convention)
-    int imgEndIndex = 18;   // last file index to load
+    int imgEndIndex = 77;//18;   // last file index to load
     int imgStepWidth = 1; 
     int imgFillWidth = 4;  // no. of digits which make up the file index (e.g. img-0001.png)
 
@@ -99,10 +99,11 @@ int main(int argc, const char *argv[])
         /* DETECT & CLASSIFY OBJECTS */
 
         float confThreshold = 0.2;
-        float nmsThreshold = 0.4;        
+        float nmsThreshold = 0.4;
+        bVis = true;        
         detectObjects((dataBuffer.end() - 1)->cameraImg, (dataBuffer.end() - 1)->boundingBoxes, confThreshold, nmsThreshold,
                       yoloBasePath, yoloClassesFile, yoloModelConfiguration, yoloModelWeights, bVis);
-
+        bVis = false;
         //cout << "#2 : DETECT & CLASSIFY OBJECTS done" << endl;
 
 
@@ -129,7 +130,7 @@ int main(int argc, const char *argv[])
         clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end() - 1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
-        bVis = true;
+        bVis = false;
         if(bVis)
         {
             show3DObjects((dataBuffer.end()-1)->boundingBoxes, cv::Size(4.0, 20.0), cv::Size(1000, 1000), true);
@@ -147,7 +148,7 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "BRISK"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
+        string detectorType = "SIFT"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
 
         Detector detector (detectorType);
         detector.visualizeDetector(false);
@@ -181,7 +182,7 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+        string descriptorType = "SIFT"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
         
         Descriptor descriptor (descriptorType);
         try{
@@ -204,7 +205,7 @@ int main(int argc, const char *argv[])
             /* MATCH KEYPOINT DESCRIPTORS */
 
             vector<cv::DMatch> matches;
-            string matcherType = "MAT_BF";        // MAT_BF, MAT_FLANN
+            string matcherType = "MAT_FLANN";        // MAT_BF, MAT_FLANN
             string selectorType = "SEL_KNN";       // SEL_NN, SEL_KNN
 
             Matcher matcher (matcherType, selectorType, descriptor.featureType());
@@ -291,7 +292,7 @@ int main(int argc, const char *argv[])
                         string windowName = "Final Results : TTC";
                         cv::namedWindow(windowName, 4);
                         cv::imshow(windowName, visImg);
-                        cout << "Press key to continue to next frame" << endl;
+                        //cout << "Press key to continue to next frame" << endl;
                         cv::waitKey(0);
                     }
                     bVis = false;
