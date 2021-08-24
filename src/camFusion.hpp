@@ -56,5 +56,5 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
  * @param offset_lidar_bumper [in] offset in m between lidar and camera. Set to 0.27 by default (rough approximation from here: http://www.cvlibs.net/datasets/kitti/setup.php).
  */
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
-                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC, double offset_lidar_camera = 0.0);//0.27);                  
+                     std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC, double offset_lidar_camera = 0.27);                  
 #endif /* camFusion_hpp */

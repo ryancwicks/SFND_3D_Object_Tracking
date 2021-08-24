@@ -74,6 +74,15 @@ int main(int argc, const char *argv[])
     vector<DataFrame> dataBuffer; // list of data frames which are held in memory at the same time
     bool bVis = false;            // visualize results
 
+
+    string detectorType = "BRISK"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
+    string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+    string matcherType = "MAT_FLANN";        // MAT_BF, MAT_FLANN
+    string selectorType = "SEL_KNN";       // SEL_NN, SEL_KNN
+    std::string out_file_name = detectorType + "-" + descriptorType + "-" + matcherType + "-" + selectorType + ".txt";
+
+    ofstream out_file (out_file_name);
+            
     /* MAIN LOOP OVER ALL IMAGES */
 
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
@@ -100,7 +109,7 @@ int main(int argc, const char *argv[])
 
         float confThreshold = 0.2;
         float nmsThreshold = 0.4;
-        bVis = true;        
+        bVis = false;        
         detectObjects((dataBuffer.end() - 1)->cameraImg, (dataBuffer.end() - 1)->boundingBoxes, confThreshold, nmsThreshold,
                       yoloBasePath, yoloClassesFile, yoloModelConfiguration, yoloModelWeights, bVis);
         bVis = false;
@@ -148,7 +157,6 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "SIFT"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
 
         Detector detector (detectorType);
         detector.visualizeDetector(false);
@@ -182,7 +190,6 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-        string descriptorType = "SIFT"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
         
         Descriptor descriptor (descriptorType);
         try{
@@ -205,8 +212,6 @@ int main(int argc, const char *argv[])
             /* MATCH KEYPOINT DESCRIPTORS */
 
             vector<cv::DMatch> matches;
-            string matcherType = "MAT_FLANN";        // MAT_BF, MAT_FLANN
-            string selectorType = "SEL_KNN";       // SEL_NN, SEL_KNN
 
             Matcher matcher (matcherType, selectorType, descriptor.featureType());
             if ( (dataBuffer.end() - 1)->keypoints.size() == 0 ||
@@ -268,6 +273,11 @@ int main(int argc, const char *argv[])
                  // compute TTC for current match
                 if( currBB->lidarPoints.size()>0 && prevBB->lidarPoints.size()>0 ) // only compute TTC if we have Lidar points
                 {
+
+                    BoundingBox & box ((dataBuffer.end()-1)->boundingBoxes[currBB->boxID]); //Added this check to keep focused on the center lane.
+                    if (!((box.roi.tl().x < img.size().width/2) && (box.roi.br().x > img.size().width/2))) {
+                        continue;
+                    }
                     double ttcLidar; 
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
 
@@ -275,7 +285,10 @@ int main(int argc, const char *argv[])
                     clusterKptMatchesWithROI(*currBB, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);                    
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
 
-                    bVis = true;
+                    std::cout << ttcLidar << ", " << ttcCamera << std::endl;
+                    out_file << ttcLidar << ", " << ttcCamera << std::endl;
+
+                    bVis = false;
                     if (bVis)
                     {
                         cv::Mat visImg = (dataBuffer.end() - 1)->cameraImg.clone();
@@ -293,7 +306,7 @@ int main(int argc, const char *argv[])
                         cv::namedWindow(windowName, 4);
                         cv::imshow(windowName, visImg);
                         //cout << "Press key to continue to next frame" << endl;
-                        cv::waitKey(0);
+                        cv::waitKey(1);
                     }
                     bVis = false;
 
@@ -301,8 +314,8 @@ int main(int argc, const char *argv[])
             } // eof loop over all BB matches            
 
         }
-
+        
     } // eof loop over all images
-
+    out_file.close();
     return 0;
 }
