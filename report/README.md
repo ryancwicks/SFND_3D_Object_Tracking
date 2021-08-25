@@ -46,9 +46,16 @@ In some cases, this is a jump to a large value due to a small difference in rela
 
 The filtering seems to work well when the LIDAR data is grouped together. Little jumps away from the main set of points are handled correctly. In the image shown below, the outlier sits at 7.205 m, but the filtered range to target is 7.344 m (distance to the main clump). Not properly filtering these small jumps can cause very large jumps in the range to target.
 
+![working filter](working_filter.png "Working filter with a small jump.")
+
 One instance where this filtering doesn't work is when there are very large jumps away from the mean far from the central cluster of points, shown in the image below. In this case, the near outlier is no longer being filtered due to the large outliers, presumably from other vehicles or the roadway in the bounding box. This caused a jump in the TTC from about 7s to about 2s. The only way to deal with this would be to come up with a more advanced filter, perhaps RANSAC based that would better find the mean of the main cluster and reject these outliers.
+
+![Extreme filter](extreme_filter_case.png "More extreme outlier case")
 
 I decided to take a simpler route, based on the idea that the majority of the points on the vehicle picked up by LIDAR will be picked up on the back bumper. To perform the outlier rejection, I first reject any points further than 0.25m from the median laser point, and then continue with the calculation of the mean and standard deviation. This new algorithm now rejects points from other vehicles and the roadway that are being picked up within the bounding box, and allows the small outliers to continue to be rejected even in cases with a lot of outlier noise. Adding this functionality to the filter maintained the filter performance for well clustered LIDAR point clouds, and effectively pre-filtered the large outliers, so that the algorithm could effectively filter out small outliers on the back bumper (in the case previously discussed, the TTC jumped back up to about 7s, in line with the previous measurements).
 
 ## FP.6 - Performance Evaluation 2
 ----------------------------------
+![plot of TTC](plot_results.png "Plot of TTC's")
+
+In general, the performance of the camera based TTC tended to be smoother than the LIDAR based TTC. Most detector/descriptor combinations did tend to produce a smaller TTC value than the LIDAR, especially at larger distances. The SIFT and AKAZE based detector/descriptor combinations did the best job of following the LIDAR based TTC. The larger deviation at longer vehicle distances may be due to the AKAZE and SIFT detectors better handling scale invariance or increased defocusing with distance (although this is just a hypothesis). At the other extreme any ORB based detectors seem to underestimate the TTC values. 

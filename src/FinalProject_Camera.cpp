@@ -75,8 +75,8 @@ int main(int argc, const char *argv[])
     bool bVis = false;            // visualize results
 
 
-    string detectorType = "BRISK"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
-    string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+    string detectorType = "SIFT"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
+    string descriptorType = "SIFT"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
     string matcherType = "MAT_FLANN";        // MAT_BF, MAT_FLANN
     string selectorType = "SEL_KNN";       // SEL_NN, SEL_KNN
     std::string out_file_name = detectorType + "-" + descriptorType + "-" + matcherType + "-" + selectorType + ".txt";
