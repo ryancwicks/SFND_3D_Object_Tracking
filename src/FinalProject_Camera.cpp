@@ -75,8 +75,8 @@ int main(int argc, const char *argv[])
     bool bVis = false;            // visualize results
 
 
-    string detectorType = "SIFT"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
-    string descriptorType = "SIFT"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+    string detectorType = "ORB"; //"SHITOMASI", "HARRIS", "FAST", "BRISK", "ORB", "AKAZE", "SIFT"
+    string descriptorType = "ORB"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
     string matcherType = "MAT_FLANN";        // MAT_BF, MAT_FLANN
     string selectorType = "SEL_KNN";       // SEL_NN, SEL_KNN
     std::string out_file_name = detectorType + "-" + descriptorType + "-" + matcherType + "-" + selectorType + ".txt";
@@ -288,7 +288,7 @@ int main(int argc, const char *argv[])
                     std::cout << ttcLidar << ", " << ttcCamera << std::endl;
                     out_file << ttcLidar << ", " << ttcCamera << std::endl;
 
-                    bVis = false;
+                    bVis = true;
                     if (bVis)
                     {
                         cv::Mat visImg = (dataBuffer.end() - 1)->cameraImg.clone();

@@ -154,31 +154,32 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
         return;
     }
 
-    //calculate mean and standard deviation of match distances
+    //calculate mean and standard deviation of the euclidian distances distances
     double mean = 0.0;
+    std::vector <double> distances;
+    distances.reserve(boundingBox.kptMatches.size());
     for (const auto & match : boundingBox.kptMatches) {
-        mean += match.distance; 
+        auto & point1 = kptsCurr[match.trainIdx].pt;
+        auto & point2 = kptsCurr[match.queryIdx].pt;
+        double dist = cv::norm(point1-point2);
+        mean += dist;
+        distances.push_back(dist); 
     }
-    mean /= boundingBox.kptMatches.size();
+    mean /= distances.size();
 
     double stddev = 0.0;
-    for (const auto & match : boundingBox.kptMatches) {
-        stddev += std::pow(match.distance - mean, 2.0);
+    for (const auto & dist : distances) {
+        stddev += std::pow(dist - mean, 2.0);
     }
-    stddev = std::sqrt(stddev/(boundingBox.kptMatches.size()-1));
+    stddev = std::sqrt(stddev/(distances.size()-1));
 
     //remove keypoints with distances > 3 * standard deviation
-    boundingBox.kptMatches.erase( std::remove_if( boundingBox.kptMatches.begin(),
-                                                  boundingBox.kptMatches.end(),
-                                                  [&]( const cv::DMatch & match ) -> bool {
-                                                      return std::abs(match.distance - mean) > 3.0*stddev;
-                                                  } ),
-                                   boundingBox.kptMatches.end() );
-    
     boundingBox.keypoints.clear();
     boundingBox.keypoints.reserve(boundingBox.kptMatches.size());
-    for (const auto & match : boundingBox.kptMatches) {
-        boundingBox.keypoints.push_back(kptsCurr[match.trainIdx]);
+    for (auto i = 0; i < distances.size(); ++i) {
+        if (std::abs(distances[i]-mean) < 3.0*stddev) {
+            boundingBox.keypoints.push_back(kptsCurr[boundingBox.kptMatches[i].trainIdx]);
+        }
     }
 }
 
